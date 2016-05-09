@@ -4,7 +4,6 @@ Created on 6 May 2016
 
 @author: af
 '''
-from authinfo import access_token, access_token_secret, consumer_key, consumer_secret, firehose
 from tweepy.streaming import StreamListener
 from tweepy import OAuthHandler
 from tweepy import Stream
@@ -16,6 +15,7 @@ import os
 import logging
 import pdb
 from os import path
+import ConfigParser
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
 class TwitterStreamListener(StreamListener):
@@ -44,6 +44,7 @@ class TwitterStreamListener(StreamListener):
             logging.warn('rate limit exceeded.')
             self.rate_limit_exceeded = True
             return False
+        logging.warn('error occurred in fetcher Twitter API with status_code ' + str(status_code))
     
     def stop(self):
         self.should_stop = True
@@ -57,7 +58,8 @@ class TwitterStreamListener(StreamListener):
         else:
             #1 hour passed, flush the files, close them and restart the process
             self.stop()
-            self.dump_file.close()
+            if not self.dump_file.closed:
+                self.dump_file.close()
             try:
                 time.sleep(3)
                 logging.info('Restarting the script for hourly rotation...')
@@ -72,7 +74,7 @@ class TwitterStreamListener(StreamListener):
         return current_file
         
     
-def start_stream(stream):
+def start_stream(stream, firehose):
     if firehose:
         stream.firehose(count=None, async=True)
     else:
@@ -80,26 +82,57 @@ def start_stream(stream):
 def stop_stream(stream):
     stream.listener.stop()
     stream.disconnect()
-               
+    if not stream.listener.dump_file.closed:
+        stream.listener.dump_file.close()
+    
+def getConf(conf_file='conf.cfg'):
+    config = ConfigParser.ConfigParser()
+    config.read(conf_file)
+    return config      
+
 if __name__ == '__main__':
-    dump_dir = '/home/af/Documents/tweets'
+    
+    config = getConf()
+    dump_dir = config.get('appinfo', 'dump_dir')
+    firehose = config.getboolean('appinfo', 'firehose')
+    sleep_time = config.getint('appinfo', 'sleep_time')
+    safe_stop = config.getboolean('appinfo', 'safe_stop')
+    #safe stop is turned on
+    if safe_stop:
+        logging.info('safe_stop is True. Quitting safely. To start the fetcher turn off safe_stop.')
+        sys.exit()
+   
     listener = TwitterStreamListener(dump_dir)
+    consumer_key, consumer_secret = config.get('authinfo', 'consumer_key'), config.get('authinfo', 'consumer_secret')
+    access_token, access_token_secret = config.get('authinfo', 'access_token'), config.get('authinfo', 'access_token_secret')
     auth = OAuthHandler(consumer_key, consumer_secret)
     auth.set_access_token(access_token, access_token_secret)
     stream = Stream(auth, listener)
-    start_stream(stream)
+    start_stream(stream, firehose)
+    logging.info('The fetcher started working,')
     
     num_tweets = 0
     while True:
         #this should never happen in streaming mode, unless a lot of new connections are opened.
         if listener.rate_limit_exceeded:
             stop_stream(stream)
-            time.sleep(1000)
+            time.sleep(10)
             logging.warn('Restarting the script because rate limit exceeded...')
             os.execv(__file__, sys.argv)
         else:
-            #let the fetcher work for 1000s.
-            time.sleep(1000)
+            #let the main process sleep and the fetcher work for a while. Meanwhile check if safe_stop is on so to end the program.
+            slept_time = 0
+            while slept_time < sleep_time:
+                config = getConf()
+                safe_stop = config.getboolean('appinfo', 'safe_stop')
+                #safe_stop is turned on. stop the stream, quit the program.
+                if safe_stop:
+                    logging.info('safe_stop is True. Quitting safely. To start the fetcher turn off safe_stop.')
+                    stop_stream(stream)
+                    sys.exit()
+                else:
+                    slept_time += 10
+                    time.sleep(10)
         #no tweet in 1000 seconds. restart the process.
         if listener.counter == num_tweets:
             try:
