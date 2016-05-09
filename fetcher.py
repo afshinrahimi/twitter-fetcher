@@ -24,7 +24,7 @@ class TwitterStreamListener(StreamListener):
     def __init__(self, dump_path):
         super(TwitterStreamListener, self).__init__()
         self.dump_path = dump_path
-        self.current_file = self.get_current_file()
+        self.current_file = datetime.now().strftime("twitter.%Y-%m-%d-%H.lzo")
         self.dump_file = open(path.join(self.dump_path, self.current_file), 'ab')
         self.lzop = subprocess.Popen('lzop -c '.split(), stdout=self.dump_file, shell=False, stdin=subprocess.PIPE)
         self.should_stop = False
@@ -32,7 +32,6 @@ class TwitterStreamListener(StreamListener):
         self.rate_limit_exceeded = False
             
     def on_data(self, data):
-        self.check_everything()
         if self.should_stop:
             return False
         self.counter += 1
@@ -47,31 +46,7 @@ class TwitterStreamListener(StreamListener):
         logging.warn('error occurred in fetcher Twitter API with status_code ' + str(status_code))
     
     def stop(self):
-        self.should_stop = True
-        
-
-    def check_everything(self):
-        current_file = self.get_current_file()
-        #if one hour has passed
-        if self.current_file == current_file:
-            pass
-        else:
-            #1 hour passed, flush the files, close them and restart the process
-            self.stop()
-            if not self.dump_file.closed:
-                self.dump_file.close()
-            try:
-                time.sleep(3)
-                logging.info('Restarting the script for hourly rotation...')
-                os.execv(__file__, sys.argv)
-            except:
-                pass
-
-            
-            
-    def get_current_file(self):
-        current_file = datetime.now().strftime("twitter.%Y-%m-%d-%H.lzo")
-        return current_file
+        self.should_stop = True        
         
     
 def start_stream(stream, firehose):
@@ -131,16 +106,23 @@ if __name__ == '__main__':
                     stop_stream(stream)
                     sys.exit()
                 else:
+                    #do the hourly rotation check.
+                    if listener.current_file != datetime.now().strftime("twitter.%Y-%m-%d-%H.lzo"):
+                        stop_stream(stream)
+                        logging.info('Restarting the script because of hourly file rotation.')
+                        os.execv(__file__, sys.argv)
+                        
+                        
                     slept_time += 10
                     time.sleep(10)
-        #no tweet in 1000 seconds. restart the process.
+        #no tweet in sleep_time seconds. restart the process.
         if listener.counter == num_tweets:
             try:
                 stop_stream(stream)
                 logging.debug('Fetcher stopped for process restart.')
             except:
                 pass
-            logging.warn('Restarting the script because no new tweet is downloaded in the last 1000 seconds.')
+            logging.warn('Restarting the script because no new tweet is downloaded in the last ' + str(sleep_time) + ' seconds.')
             os.execv(__file__, sys.argv)
         else:
             num_tweets = listener.counter
