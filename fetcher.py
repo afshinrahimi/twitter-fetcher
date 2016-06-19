@@ -99,6 +99,7 @@ if __name__ == '__main__':
             slept_time = 0
             while slept_time < sleep_time:
                 config = getConf()
+                sleep_time = config.getint('appinfo', 'sleep_time')
                 safe_stop = config.getboolean('appinfo', 'safe_stop')
                 #safe_stop is turned on. stop the stream, quit the program.
                 if safe_stop:
