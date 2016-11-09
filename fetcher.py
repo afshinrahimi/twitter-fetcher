@@ -16,6 +16,7 @@ import logging
 import pdb
 from os import path
 import ConfigParser
+import signal
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
 
 class TwitterStreamListener(StreamListener):
@@ -46,7 +47,13 @@ class TwitterStreamListener(StreamListener):
         logging.warn('error occurred in fetcher Twitter API with status_code ' + str(status_code))
     
     def stop(self):
-        self.should_stop = True        
+        self.should_stop = True   
+        if not stream.listener.dump_file.closed:
+            stream.listener.dump_file.close()
+        try:
+            self.lzop.kill()
+        except:
+            pass
         
     
 def start_stream(stream, firehose):
@@ -64,9 +71,13 @@ def getConf(conf_file='conf.cfg'):
     config = ConfigParser.ConfigParser()
     config.read(conf_file)
     return config      
+def signal_handler(signum, frame):
+    logging.info('program interrupted by signal ' + str(signum) + ' quitting safely...')
+    stop_stream(stream)
+    sys.exit(1)
 
 if __name__ == '__main__':
-    
+    signal.signal(signal.SIGINT, signal_handler)
     config = getConf()
     dump_dir = config.get('appinfo', 'dump_dir')
     firehose = config.getboolean('appinfo', 'firehose')
