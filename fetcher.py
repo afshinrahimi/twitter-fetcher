@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 '''
-Created on 6 May 2016
-
+created on 6 May 2016
 @author: af
 '''
 from tweepy.streaming import StreamListener
@@ -14,11 +13,9 @@ import sys
 import os
 import logging
 import pdb
-from os import path
 import ConfigParser
+import signal
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
-
-twitter_stream = None
 
 class TwitterStreamListener(StreamListener):
     """ A listener handles tweets that are received from the stream.
@@ -32,7 +29,7 @@ class TwitterStreamListener(StreamListener):
         self.should_stop = False
         self.counter = 0
         self.rate_limit_exceeded = False
-            
+
     def on_data(self, data):
         if self.should_stop:
             return False
@@ -46,17 +43,17 @@ class TwitterStreamListener(StreamListener):
             self.rate_limit_exceeded = True
             return False
         logging.warn('error occurred in fetcher Twitter API with status_code ' + str(status_code))
-    
+
     def stop(self):
-        self.should_stop = True   
+        self.should_stop = True
         if not stream.listener.dump_file.closed:
             stream.listener.dump_file.close()
         try:
             self.lzop.kill()
         except:
             pass
-        
-    
+
+
 def start_stream(stream, firehose):
     if firehose:
         stream.firehose(count=None, async=True)
@@ -67,15 +64,18 @@ def stop_stream(stream):
     stream.disconnect()
     if not stream.listener.dump_file.closed:
         stream.listener.dump_file.close()
-    
+
 def getConf(conf_file='conf.cfg'):
     config = ConfigParser.ConfigParser()
     config.read(conf_file)
-    return config      
+    return config
+def signal_handler(signum, frame):
+    logging.info('program interrupted by signal ' + str(signum) + ' quitting safely...')
+    stop_stream(stream)
+    sys.exit(1)
 
-
-def main():
-    global twitter_stream
+if __name__ == '__main__':
+    signal.signal(signal.SIGINT, signal_handler)
     config = getConf()
     dump_dir = config.get('appinfo', 'dump_dir')
     firehose = config.getboolean('appinfo', 'firehose')
@@ -85,6 +85,7 @@ def main():
     if safe_stop:
         logging.info('safe_stop is True. Quitting safely. To start the fetcher turn off safe_stop.')
         sys.exit()
+
     listener = TwitterStreamListener(dump_dir)
     consumer_key, consumer_secret = config.get('authinfo', 'consumer_key'), config.get('authinfo', 'consumer_secret')
     access_token, access_token_secret = config.get('authinfo', 'access_token'), config.get('authinfo', 'access_token_secret')
@@ -93,7 +94,7 @@ def main():
     stream = Stream(auth, listener)
     start_stream(stream, firehose)
     logging.info('The fetcher started working,')
-    twitter_stream = stream
+
     num_tweets = 0
     while True:
         #this should never happen in streaming mode, unless a lot of new connections are opened.
@@ -120,8 +121,8 @@ def main():
                         stop_stream(stream)
                         logging.info('Restarting the script because of hourly file rotation.')
                         os.execv(__file__, sys.argv)
-                        
-                        
+
+
                     slept_time += 10
                     time.sleep(10)
         #no tweet in sleep_time seconds. restart the process.
@@ -136,8 +137,4 @@ def main():
         else:
             num_tweets = listener.counter
             logging.info('#tweets since fetcher started: ' + str(num_tweets))
-if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        stop_stream(twitter_stream)
+                                                                                     
