@@ -16,8 +16,9 @@ import logging
 import pdb
 from os import path
 import ConfigParser
-import signal
 logging.basicConfig(format='%(asctime)s %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
+
+twitter_stream = None
 
 class TwitterStreamListener(StreamListener):
     """ A listener handles tweets that are received from the stream.
@@ -71,13 +72,10 @@ def getConf(conf_file='conf.cfg'):
     config = ConfigParser.ConfigParser()
     config.read(conf_file)
     return config      
-def signal_handler(signum, frame):
-    logging.info('program interrupted by signal ' + str(signum) + ' quitting safely...')
-    stop_stream(stream)
-    sys.exit(1)
 
-if __name__ == '__main__':
-    signal.signal(signal.SIGINT, signal_handler)
+
+def main():
+    global twitter_stream
     config = getConf()
     dump_dir = config.get('appinfo', 'dump_dir')
     firehose = config.getboolean('appinfo', 'firehose')
@@ -87,7 +85,6 @@ if __name__ == '__main__':
     if safe_stop:
         logging.info('safe_stop is True. Quitting safely. To start the fetcher turn off safe_stop.')
         sys.exit()
-   
     listener = TwitterStreamListener(dump_dir)
     consumer_key, consumer_secret = config.get('authinfo', 'consumer_key'), config.get('authinfo', 'consumer_secret')
     access_token, access_token_secret = config.get('authinfo', 'access_token'), config.get('authinfo', 'access_token_secret')
@@ -96,7 +93,7 @@ if __name__ == '__main__':
     stream = Stream(auth, listener)
     start_stream(stream, firehose)
     logging.info('The fetcher started working,')
-    
+    twitter_stream = stream
     num_tweets = 0
     while True:
         #this should never happen in streaming mode, unless a lot of new connections are opened.
@@ -139,3 +136,8 @@ if __name__ == '__main__':
         else:
             num_tweets = listener.counter
             logging.info('#tweets since fetcher started: ' + str(num_tweets))
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        stop_stream(twitter_stream)
