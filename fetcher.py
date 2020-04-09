@@ -24,8 +24,10 @@ class TwitterStreamListener(StreamListener):
         super(TwitterStreamListener, self).__init__()
         self.dump_path = dump_path
         self.current_file = datetime.now().strftime("twitter.%Y-%m-%d-%H.lzo")
+        #self.current_file = datetime.now().strftime("twitter.%Y-%m-%d-%H.gz")
         self.dump_file = open(path.join(self.dump_path, self.current_file), 'ab')
         self.lzop = subprocess.Popen('lzop -c '.split(), stdout=self.dump_file, shell=False, stdin=subprocess.PIPE)
+        #self.lzop = subprocess.Popen('gzip -c '.split(), stdout=self.dump_file, shell=False, stdin=subprocess.PIPE)
         self.should_stop = False
         self.counter = 0
         self.rate_limit_exceeded = False
