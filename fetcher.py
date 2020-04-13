@@ -125,8 +125,8 @@ if __name__ == '__main__':
                         os.execv(__file__, sys.argv)
 
 
-                    slept_time += 10
-                    time.sleep(10)
+                slept_time += 10
+                time.sleep(10)
         #no tweet in sleep_time seconds. restart the process.
         if listener.counter == num_tweets:
             try:
