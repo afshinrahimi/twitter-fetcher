@@ -23,7 +23,7 @@ class TwitterStreamListener(StreamListener):
     def __init__(self, dump_path):
         super(TwitterStreamListener, self).__init__()
         self.dump_path = dump_path
-        self.current_file = datetime.now().strftime("twitter.%Y-%m-%d-%H.json." + compression)
+        self.current_file = datetime.now().strftime(rotation_pattern + ".json." + compression)
         self.dump_file = open(path.join(self.dump_path, self.current_file), 'ab')
         if compression == 'lzo':
             self.compressor = subprocess.Popen('lzop -c '.split(), stdout=self.dump_file, shell=False, stdin=subprocess.PIPE)
@@ -85,6 +85,8 @@ if __name__ == '__main__':
     sleep_time = config.getint('appinfo', 'sleep_time')
     safe_stop = config.getboolean('appinfo', 'safe_stop')
     compression = config.getint('appinfo', 'compression')
+    rotation_pattern = config.getint('appinfo', 'rotation_pattern')
+    
     #safe stop is turned on
     if safe_stop:
         logging.info('safe_stop is True. Quitting safely. To start the fetcher turn off safe_stop.')
@@ -121,7 +123,7 @@ if __name__ == '__main__':
                     sys.exit()
                 else:
                     #do the hourly rotation check.
-                    if listener.current_file != datetime.now().strftime("twitter.%Y-%m-%d-%H.json." + compression):
+                    if listener.current_file != datetime.now().strftime(rotation_pattern + ".json." + compression):
                         stop_stream(stream)
                         logging.info('Restarting the script because of hourly file rotation.')
                         os.execv(__file__, sys.argv)
