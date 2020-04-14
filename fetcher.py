@@ -23,11 +23,12 @@ class TwitterStreamListener(StreamListener):
     def __init__(self, dump_path):
         super(TwitterStreamListener, self).__init__()
         self.dump_path = dump_path
-        self.current_file = datetime.now().strftime("twitter.%Y-%m-%d-%H.lzo")
-        #self.current_file = datetime.now().strftime("twitter.%Y-%m-%d-%H.gz")
+        self.current_file = datetime.now().strftime("twitter.%Y-%m-%d-%H.json." + compression)
         self.dump_file = open(path.join(self.dump_path, self.current_file), 'ab')
-        self.lzop = subprocess.Popen('lzop -c '.split(), stdout=self.dump_file, shell=False, stdin=subprocess.PIPE)
-        #self.lzop = subprocess.Popen('gzip -c '.split(), stdout=self.dump_file, shell=False, stdin=subprocess.PIPE)
+        if compression == 'lzo':
+            self.compressor = subprocess.Popen('lzop -c '.split(), stdout=self.dump_file, shell=False, stdin=subprocess.PIPE)
+        elif compression == 'gz':
+            self.compressor = subprocess.Popen('gzip -c '.split(), stdout=self.dump_file, shell=False, stdin=subprocess.PIPE)
         self.should_stop = False
         self.counter = 0
         self.rate_limit_exceeded = False
@@ -36,7 +37,7 @@ class TwitterStreamListener(StreamListener):
         if self.should_stop:
             return False
         self.counter += 1
-        self.lzop.stdin.write(data)
+        self.compressor.stdin.write(data)
         return True
 
     def on_error(self, status_code):
@@ -51,16 +52,16 @@ class TwitterStreamListener(StreamListener):
         if not stream.listener.dump_file.closed:
             stream.listener.dump_file.close()
         try:
-            self.lzop.kill()
+            self.compressor.kill()
         except:
             pass
 
 
 def start_stream(stream, firehose):
     if firehose:
-        stream.firehose(count=None, async=True)
+        stream.firehose(count=None, is_async=True)
     else:
-        stream.sample(async=True)
+        stream.sample(is_async=True)
 def stop_stream(stream):
     stream.listener.stop()
     stream.disconnect()
@@ -83,6 +84,7 @@ if __name__ == '__main__':
     firehose = config.getboolean('appinfo', 'firehose')
     sleep_time = config.getint('appinfo', 'sleep_time')
     safe_stop = config.getboolean('appinfo', 'safe_stop')
+    compression = config.getint('appinfo', 'compression')
     #safe stop is turned on
     if safe_stop:
         logging.info('safe_stop is True. Quitting safely. To start the fetcher turn off safe_stop.')
@@ -119,7 +121,7 @@ if __name__ == '__main__':
                     sys.exit()
                 else:
                     #do the hourly rotation check.
-                    if listener.current_file != datetime.now().strftime("twitter.%Y-%m-%d-%H.lzo"):
+                    if listener.current_file != datetime.now().strftime("twitter.%Y-%m-%d-%H.json." + compression):
                         stop_stream(stream)
                         logging.info('Restarting the script because of hourly file rotation.')
                         os.execv(__file__, sys.argv)
